@@ -94,6 +94,8 @@ function compile() {
     mkdir -p "${ASSETS}"
     cp -r -v "./assets" "${ASSETS}"
 
+    echo "  ${CC} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} -DASSETS=\"${ASSETS}/assets\" -o \"${EXEFILE}\""
+
     ${CC} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} \
         -DASSETS=\"${ASSETS}/assets\" \
         -o "${EXEFILE}" && echo "+ Helix compiled successfully."
