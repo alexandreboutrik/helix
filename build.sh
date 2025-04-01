@@ -7,7 +7,7 @@ CC="c++"
 RAYLIB_STATIC="./dependencies/raylib-5.5/build/raylib"
 
 LDFLAGS="-L${RAYLIB_STATIC} -l:libraylib.a -lm"
-CFLAGS="-std=c99 -pipe"
+CFLAGS="-std=c++17 -pipe -Os"
 WARNFLAGS="-W -Wall -Wpedantic -Wformat=2"
 
 CINCL="-I./include -I./source"
@@ -94,9 +94,9 @@ function compile() {
     mkdir -p "${ASSETS}"
     cp -r -v "./assets" "${ASSETS}"
 
-    echo "  ${CC} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} -DASSETS=\"${ASSETS}/assets\" -o \"${EXEFILE}\""
+    echo "  ${CC} ${CFLAGS} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} -DASSETS=\"${ASSETS}/assets\" -o \"${EXEFILE}\""
 
-    ${CC} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} \
+    ${CC} ${CFLAGS} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} \
         -DASSETS=\"${ASSETS}/assets\" \
         -o "${EXEFILE}" && echo "+ Helix compiled successfully."
 }
