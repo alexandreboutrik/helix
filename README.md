@@ -1,6 +1,6 @@
 # Helix
 
-<img align="right" width="128px" src="./.media/helix.png">
+<img align="right" width="128px" src="./assets/logo.png">
 
 ![Version Badge](https://img.shields.io/badge/version-v0.0.1--prealpha-darkred)
 
