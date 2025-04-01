@@ -22,6 +22,7 @@ Release date to be determined.
 
 ```bash
 $ ./build.sh -help
+$ ./build.sh -compile -run
 ```
 
 | Windows |
