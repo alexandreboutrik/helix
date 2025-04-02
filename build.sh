@@ -4,9 +4,10 @@ mkdir -p ./build
 
 CC="c++"
 
-RAYLIB_STATIC="./dependencies/raylib-5.5/build/raylib"
+RAYLIB="./dependencies/raylib/build/raylib"
+SYMENG="./dependencies/symengine/build/symengine"
 
-LDFLAGS="-L${RAYLIB_STATIC} -l:libraylib.a -lm"
+LDFLAGS="-L${RAYLIB} -l:libraylib.a -L${SYMENG} -l:libsymengine.a -lm -lgmp"
 CFLAGS="-std=c++17 -pipe -Os"
 WARNFLAGS="-W -Wall -Wpedantic -Wformat=2"
 
@@ -14,7 +15,7 @@ CINCL="-I./include -I./source"
 CFILES="source/*.cpp"
 
 EXEFILE="./build/helix"
-ASSETS="/home/$(whoami)/.local/share/arena"
+ASSETS="/home/$(whoami)/.local/share/helix"
 
 function print_help() {
     echo "USAGE:"
@@ -37,7 +38,7 @@ function print_help() {
 }
 
 function check_dependencies() {
-    if [ ! -f "${RAYLIB_STATIC}/libraylib.a" ] ; then
+    if [ ! -f "${EXEFILE}" ] ; then
         LSB_RELEASE=$(cat /etc/release 2>/dev/null)
         if [ ! "${LSB_RELEASE}" ] ; then
             LSB_RELEASE=$(cat /etc/os-release)
@@ -66,27 +67,29 @@ function check_dependencies() {
             exit 1
             ;;
         esac
-
-        compile_raylib
     fi
 }
 
-function compile_raylib() {
-    if [ ! -d "./dependencies/raylib-5.5/" ] ; then
-        unzip ./dependencies/raylib-5.5.zip -d ./dependencies
+function compile_dep() {
+    if [ ! -d "./dependencies/${1}/" ] ; then 
+        unzip ./dependencies/${1}.zip -d ./dependencies
         if [ $? -ne 0 ] ; then
-            echo "- Failed to unzip raylib-5.5."
+            echo "- Failed to unzip raylib."
             exit 1
         fi
     fi
 
-    mkdir ./dependencies/raylib-5.5/build
-    cmake -B ./dependencies/raylib-5.5/build -S ./dependencies/raylib-5.5/ ||
-    { echo "Failed to compile raylib-5.5. Cmake. Exiting" ; exit 1 ;}
-    make PLATFORM=PLATFORM_DESKTOP -B -C ./dependencies/raylib-5.5/build/ ||
-    { echo "Failed to compile raylib-5.5. Make. Exiting" ; exit 1 ;}
+    if [ -f "./dependencies/${1}/build/${1}/lib${1}.a" ] ; then
+        return
+    fi
 
-    echo "+ Dependency: Raylib compiled successfully."
+    mkdir ./dependencies/${1}/build
+    cmake ${2} -B ./dependencies/${1}/build -S ./dependencies/${1}/ ||
+    { echo "Failed to compile ${1}. Cmake. Exiting." ; exit 1;}
+    make ${3} -B -C ./dependencies/${1}/build/ ||
+    { echo "Failed to compile ${1}. Make. Exiting." ; exit 1;}
+
+    echo "+ Dependency: ${1} compiled successfully."
 }
 
 function compile() {
@@ -102,7 +105,7 @@ function compile() {
 }
 
 function clean() {
-    rm -rf ./dependencies/raylib-5.5/
+    rm -rf ./dependencies/{raylib,symengine}
     rm -rf ./build && mkdir ./build
     rm -rf "${ASSETS}"
 
@@ -134,6 +137,8 @@ while [ $# -ne 0 ] ; do
         ;;
     "-compile") ;& "compile") ;& "-c") ;& "c")
         check_dependencies
+        compile_dep "raylib" " " "PLATFORM=PLATFORM_DESKTOP"
+        compile_dep "symengine" "-DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF"
         compile
         ;;
    "-run") ;& "run") ;& "-r") ;& "r")
