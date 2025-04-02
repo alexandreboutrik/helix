@@ -32,12 +32,11 @@ main(void)
         ClearBackground(BLUE);
         DrawRectangle(20, 20, 60, 60, RED);
 
-        RCP<const Symbol> x = symbol("x");
-        RCP<const Basic> df_dx = compute_derivative("cos(x) + sin(2x)", x);
+        std::string fx = "cos(x) + sin(2x)";
+        RCP<const Basic> df_dx = compute_derivative(fx, symbol("x"));
+        const char *df_dx_str = str(*df_dx).c_str();
 
-        std::string df_view = str(*df_dx);
-
-        DrawText(df_view.c_str(), 100, 100, 30, WHITE);
+        DrawText(df_dx_str, 100, 100, 30, WHITE);
 
         EndDrawing();
     }
