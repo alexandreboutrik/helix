@@ -34,9 +34,9 @@ main(void)
 
         std::string fx = "cos(x) + sin(2x)";
         RCP<const Basic> df_dx = compute_derivative(fx, symbol("x"));
-        const char *df_dx_str = str(*df_dx).c_str();
+        std::string df_dx_str = str(*df_dx);
 
-        DrawText(df_dx_str, 100, 100, 30, WHITE);
+        DrawText(df_dx_str.c_str(), 100, 100, 30, WHITE);
 
         EndDrawing();
     }
