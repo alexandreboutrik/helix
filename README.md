@@ -13,7 +13,7 @@ This project is a visualization software designed to animate a circular helix. I
 
 ## Development status
 
-Release date to be determined.
+Alpha release planned for May 2025.
 
 ## Instructions
 
