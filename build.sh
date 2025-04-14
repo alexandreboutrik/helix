@@ -2,7 +2,7 @@
 
 mkdir -p ./build
 
-CC="c++"
+CXX="c++"
 
 RAYLIB="./dependencies/raylib/build/raylib"
 SYMENG="./dependencies/symengine/build/symengine"
@@ -74,7 +74,7 @@ function compile_dep() {
     if [ ! -d "./dependencies/${1}/" ] ; then 
         unzip ./dependencies/${1}.zip -d ./dependencies
         if [ $? -ne 0 ] ; then
-            echo "- Failed to unzip raylib."
+            echo "- Failed to unzip ${1}."
             exit 1
         fi
     fi
@@ -97,9 +97,9 @@ function compile() {
     mkdir -p "${ASSETS}"
     cp -r -v "./assets" "${ASSETS}"
 
-    echo "  ${CC} ${CFLAGS} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} -DASSETS=\"${ASSETS}/assets\" -o \"${EXEFILE}\""
+    echo "  ${CXX} ${CFLAGS} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} -DASSETS=\"${ASSETS}/assets\" -o \"${EXEFILE}\""
 
-    ${CC} ${CFLAGS} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} \
+    ${CXX} ${CFLAGS} ${CINCL} ${CFILES} ${WARNFLAGS} ${LDFLAGS} \
         -DASSETS=\"${ASSETS}/assets\" \
         -o "${EXEFILE}" && echo "+ Helix compiled successfully."
 }
