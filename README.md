@@ -28,7 +28,7 @@ $ ./build.sh -compile -run
 | Windows |
 |:---:|
 
-No support yet.
+No support yet. See [Issue #1](https://github.com/alexandreboutrik/helix/issues/1).
 
 ## LICENSE
 
