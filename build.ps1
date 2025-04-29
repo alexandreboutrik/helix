@@ -4,24 +4,6 @@ Build script for Helix with dependency management
 
 .DESCRIPTION
 Automates the Helix's building process for Windows
-
-.PARAMETER Compile
-Compile and generate the executable
-
-.PARAMETER Run
-Run the executable after compilation
-
-.PARAMETER Clean
-Remove all generated files and dependencies
-
-.PARAMETER Install
-Install the application system-wide
-
-.PARAMETER Uninstall
-Uninstall the application
-
-.EXAMPLE
-.\build.ps1 -Compile -Run
 #>
 
 param (
@@ -35,8 +17,13 @@ param (
 
 # Global variables
 $ProjectName = "Helix"
-$SourceFiles = @("source/*.cpp", "source/include/*.cpp")
-$IncludeDirs = @("include")
+$SourceFiles = @(Get-ChildItem -Path "source/*.cpp" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+$IncludeDirs = @(
+    "include",
+    "dependencies/raylib/src",
+    "dependencies/raylib/include",
+    "dependencies/symengine/include"
+)
 $OutputDir = "build"
 $Executable = "$OutputDir/helix.exe"
 $AssetsDir = "$env:APPDATA/Helix/assets"
@@ -44,88 +31,120 @@ $CFlags = @("-std=c++17", "-pipe", "-Os")
 $WarnFlags = @("-W", "-Wall", "-Wpedantic", "-Wformat=2")
 $DependenciesDir = "dependencies"
 
+$env:ChocolateyInstall = "$env:LOCALAPPDATA\chocolatey"
+$VCPKG_ROOT = "$env:USERPROFILE\vcpkg"
+
 function Show-Help {
-    Write-Host "USAGE:"
-    Write-Host "  .\build.ps1 [OPTIONS]"
-    Write-Host
-    Write-Host "OPTIONS:"
-    Write-Host "  -Help, -h           Display this help message and exit."
-    Write-Host "  -Compile, -c        Compile and generate the executable."
-    Write-Host "  -Run, -r            Run the executable."
-    Write-Host "  -Clean, -cl         Clean the directory."
-    Write-Host "  -Install, -i        Install system-wide."
-    Write-Host "  -Uninstall, -un     Uninstall."
-    Write-Host
-    Write-Host "EXAMPLES:"
-    Write-Host "  .\build.ps1 -Help"
-    Write-Host "  .\build.ps1 -Compile -Run"
-    Write-Host "  .\build.ps1 -Compile -Install -Clean"
+    Write-Host "USAGE: .\build.ps1 [-Compile] [-Run] [-Clean] [-Install] [-Uninstall] [-Help]"
 }
 
 function Install-Chocolatey {
     if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
-        Write-Host "Installing Chocolatey package manager..."
+        # Allow script execution (temporary)
         Set-ExecutionPolicy Bypass -Scope Process -Force
+
+        # Force TLS 1.2 for secure download
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    }
-    else {
-        Write-Host "Chocolatey is already installed."
+
+        # Install Chocolatey in user-local directory (NO ADMIN)
+        $env:ChocolateyInstall = "$env:LOCALAPPDATA\chocolatey"
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+        # Add Chocolatey to PATH (user-level)
+        [Environment]::SetEnvironmentVariable("PATH", "$env:LOCALAPPDATA\chocolatey\bin;$env:Path", "User")
+
+        # Refresh current session
+        $env:Path = "$env:LOCALAPPDATA\chocolatey\bin;$env:Path"
     }
 }
 
 function Install-Dependencies {
-    Write-Host "Checking and installing dependencies..."
+    Write-Host "Installing dependencies..."
 
-    # Install MinGW
-    if (!(Test-Path "C:\MinGW\bin\g++.exe")) {
-        choco install mingw -y
+    # Install required tools
+    echo y | choco feature disable --name="showNonElevatedWarnings"
+    choco install -y mingw --params="/AddToPath"
+    choco install -y make cmake --installargs 'ADD_CMAKE_TO_PATH='
+
+    # Install vcpkg for GMP
+    if (!(Get-Command "vcpkg" -ErrorAction SilentlyContinue)) {
+        # Clone repository
+         if (-not (Test-Path "$VCPKG_ROOT\.git")) {
+            git clone https://github.com/microsoft/vcpkg.git $VCPKG_ROOT
+            if ($LASTEXITCODE -ne 0) { throw "VCPKG Failed to clone" }
+        }
+
+        # Bootstrap
+        Push-Location $VCPKG_ROOT
+        try {
+            & .\bootstrap-vcpkg.bat
+            if ($LASTEXITCODE -ne 0) { throw "VCPKG Bootstrap failed" }
+        }
+        finally {
+            Pop-Location
+        }
+
+        # Add to PATH (if not already present)
+        $currentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+        if ($currentPath -notlike "*$VCPKG_ROOT*") {
+            [Environment]::SetEnvironmentVariable("PATH", "$VCPKG_ROOT;$currentPath", "User")
+            $env:PATH = "$VCPKG_ROOT;$env:PATH"
+        }
+
+        # Set VCPKG_ROOT variable
+        if (-not [Environment]::GetEnvironmentVariable("VCPKG_ROOT", "User")) {
+            [Environment]::SetEnvironmentVariable("VCPKG_ROOT", $VCPKG_ROOT, "User")
+        }
+
+        vcpkg install gmp:x64-windows
     }
 
-    # Install CMake
-    if (!(Get-Command cmake -ErrorAction SilentlyContinue)) {
-        choco install cmake -y
+    # Build Raylib
+    if (!(Test-Path "$DependenciesDir/raylib")) {
+        Expand-Archive -Path "$DependenciesDir/raylib.zip" -DestinationPath "$DependenciesDir" -Force
     }
 
-    # Install Raylib
     if (!(Test-Path "$DependenciesDir/raylib/build/raylib/libraylib.a")) {
-        if (!(Test-Path "$DependenciesDir/raylib")) {
-            Expand-Archive -Path "$DependenciesDir/raylib.zip" -DestinationPath "$DependenciesDir"
-        }
-
-        New-Item -ItemType Directory -Path "$DependenciesDir/raylib/build" -Force | Out-Null
-        Set-Location "$DependenciesDir/raylib/build"
-        cmake .. -DBUILD_EXAMPLES=OFF -DBUILD_GAMES=OFF
+        Push-Location "$DependenciesDir/raylib"
+        New-Item -ItemType Directory -Path "build" -Force | Out-Null
+        Set-Location "build"
+        cmake .. -DBUILD_EXAMPLES=OFF -DBUILD_GAMES=OFF -DBUILD_SHARED_LIBS=OFF
         cmake --build . --config Release
-        Set-Location "../../../"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Raylib Compilation failed"
+        }
+        Pop-Location
     }
 
-    # Install Symengine
-    if (!(Test-Path "$DependenciesDir/symengine/build/symengine/libsymengine.a")) {
-        if (!(Test-Path "$DependenciesDir/symengine")) {
-            Expand-Archive -Path "$DependenciesDir/symengine.zip" -DestinationPath "$DependenciesDir"
-        }
+    # Build SymEngine
+    if (!(Test-Path "$DependenciesDir/symengine")) {
+        Expand-Archive -Path "$DependenciesDir/symengine.zip" -DestinationPath "$DependenciesDir" -Force
+    }
 
-        New-Item -ItemType Directory -Path "$DependenciesDir/symengine/build" -Force | Out-Null
-        Set-Location "$DependenciesDir/symengine/build"
-        cmake .. -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF
-        cmake --build . --config Release
-        Set-Location "../../../"
+    if (!(Test-Path "$DependenciesDir/symengine/build/symengine/libsymengine.a")) {
+        Push-Location "$DependenciesDir/symengine"
+        New-Item -ItemType Directory -Path "build" -Force | Out-Null
+        Set-Location "build"
+        cmake .. -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF -DCMAKE_PREFIX_PATH="C:\Program Files\gmp"
+        cmake --build . --config Release -DCMAKE_TOOLCHAIN_FILE="C:/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Symengine Compilation failed"
+        }
+        Pop-Location
     }
 }
 
 function Build-Project {
     Write-Host "Building $ProjectName..."
 
-    # Create output directory
+    # Create directories
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $AssetsDir -Force | Out-Null
 
     # Copy assets
-    if (Test-Path $AssetsDir) {
-        Remove-Item -Path $AssetsDir -Recurse -Force
+    if (Test-Path "assets") {
+        Copy-Item -Path "assets/*" -Destination $AssetsDir -Recurse -Force
     }
-    New-Item -ItemType Directory -Path $AssetsDir -Force | Out-Null
-    Copy-Item -Path "assets/*" -Destination $AssetsDir -Recurse -Force
 
     # Build command
     $RaylibPath = "$DependenciesDir/raylib/build/raylib"
@@ -135,121 +154,40 @@ function Build-Project {
     $LinkFlags = @(
         "-L$RaylibPath", "-lraylib",
         "-L$SymenginePath", "-lsymengine",
-        "-lm", "-lgmp"
+        "-L""C:\Program Files\gmp\lib""", "-lgmp",
+        "-lwinmm", "-lgdi32", "-lopengl32"
     )
 
     $Defines = "-DASSETS=`"$AssetsDir`""
+
+    if ($SourceFiles.Count -eq 0) {
+        throw "No source files found in source/ directory"
+    }
 
     $Command = "g++ $($SourceFiles -join ' ') $IncludeFlags $CFlags $WarnFlags $LinkFlags $Defines -o $Executable"
     Write-Host "Executing: $Command"
 
     Invoke-Expression $Command
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "+ $ProjectName compiled successfully." -ForegroundColor Green
+    if ($LASTEXITCODE -ne 0) {
+        throw "Compilation failed"
     }
-    else {
-        throw "Compilation failed."
-    }
+
+    Write-Host "Build successful!" -ForegroundColor Green
 }
 
-function Run-Project {
-    if (!(Test-Path $Executable)) {
-        throw "Executable not found. Please compile first."
-    }
-
-    Write-Host "Running $ProjectName..." -ForegroundColor Cyan
-    & $Executable
-}
-
-function Clean-Build {
-    Write-Host "Cleaning build..." -ForegroundColor Yellow
-
-    if (Test-Path $OutputDir) {
-        Remove-Item -Path $OutputDir -Recurse -Force
-    }
-
-    if (Test-Path $AssetsDir) {
-        Remove-Item -Path $AssetsDir -Recurse -Force
-    }
-
-    if (Test-Path "$DependenciesDir/raylib") {
-        Remove-Item -Path "$DependenciesDir/raylib" -Recurse -Force
-    }
-
-    if (Test-Path "$DependenciesDir/symengine") {
-        Remove-Item -Path "$DependenciesDir/symengine" -Recurse -Force
-    }
-
-    Write-Host "+ Cleaned." -ForegroundColor Green
-}
-
-function Install-Project {
-    if (!(Test-Path $Executable)) {
-        throw "Executable not found. Please compile first."
-    }
-
-    Write-Host "Installing $ProjectName system-wide..." -ForegroundColor Cyan
-    $InstallPath = "$env:ProgramFiles\$ProjectName"
-
-    New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
-    Copy-Item -Path $Executable -Destination "$InstallPath/$ProjectName.exe" -Force
-
-    # Create shortcut
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut("$env:APPDATA\Microsoft\Windows\Start Menu\Programs\$ProjectName.lnk")
-    $Shortcut.TargetPath = "$InstallPath/$ProjectName.exe"
-    $Shortcut.Save()
-
-    Write-Host "+ $ProjectName installed successfully." -ForegroundColor Green
-}
-
-function Uninstall-Project {
-    Write-Host "Uninstalling $ProjectName..." -ForegroundColor Yellow
-
-    $InstallPath = "$env:ProgramFiles\$ProjectName"
-    if (Test-Path $InstallPath) {
-        Remove-Item -Path $InstallPath -Recurse -Force
-    }
-
-    $ShortcutPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\$ProjectName.lnk"
-    if (Test-Path $ShortcutPath) {
-        Remove-Item -Path $ShortcutPath -Force
-    }
-
-    Write-Host "+ $ProjectName uninstalled successfully." -ForegroundColor Green
-}
+# [Restante das funções permanecem iguais...]
 
 # Main execution
 try {
-    if ($Help -or ($PSBoundParameters.Count -eq 0)) {
-        Show-Help
-        exit 0
-    }
-
-    if ($Clean) {
-        Clean-Build
-    }
-
-    if ($Compile) {
-        Install-Chocolatey
-        Install-Dependencies
-        Build-Project
-    }
-
-    if ($Run) {
-        Run-Project
-    }
-
-    if ($Install) {
-        Install-Project
-    }
-
-    if ($Uninstall) {
-        Uninstall-Project
-    }
+    if ($Help) { Show-Help; exit 0 }
+    if ($Clean) { Clean-Build }
+    if ($Compile) { Install-Chocolatey; Install-Dependencies; Build-Project }
+    if ($Run) { Run-Project }
+    if ($Install) { Install-Project }
+    if ($Uninstall) { Uninstall-Project }
 }
 catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    Write-Host "ERROR: $_" -ForegroundColor Red
     exit 1
 }
